@@ -50,3 +50,15 @@ func (h *HelloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.requestsTotal.WithLabelValues("hello", code).Inc()
 	h.requestDuration.WithLabelValues("hello", code).Observe(duration)
 }
+
+// HandleFail records a synthetic 500 under the "hello" handler labels, useful
+// for triggering burn-rate alerts in a demo/testing context.
+func (h *HelloHandler) HandleFail(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	json.NewEncoder(w).Encode(map[string]string{"error": "injected failure"})
+	duration := time.Since(start).Seconds()
+	h.requestsTotal.WithLabelValues("hello", "500").Inc()
+	h.requestDuration.WithLabelValues("hello", "500").Observe(duration)
+}

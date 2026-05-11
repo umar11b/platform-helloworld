@@ -51,13 +51,26 @@ jobs:
       - uses: sigstore/cosign-installer@v3
       - run: docker push $IMAGE:${{ github.sha }}
       - run: cosign sign --yes $IMAGE:${{ github.sha }}
-      - uses: peter-evans/create-pull-request@v6
+      - name: Tag and push latest
+        run: |
+          docker tag $IMAGE:${{ github.sha }} $IMAGE:latest
+          docker push $IMAGE:latest
+      - run: cosign sign --yes $IMAGE:latest
+      - name: Checkout platform-config
+        uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PLATFORM_CONFIG_PAT }}
           repository: umar11b/platform-config
-          branch: bump/helloworld-${{ github.sha }}
-          title: "bump helloworld to ${{ github.sha }}"
-          body: "Automated image bump from CI"
-          commit-message: "bump helloworld to ${{ github.sha }}"
-          body-path: ""
-          add-paths: overlays/dev/helloworld/kustomization.yaml
+          token: ${{ secrets.PLATFORM_CONFIG_PAT }}
+          path: platform-config
+      - name: Bump image tag
+        run: |
+          sed -i "s|newTag: .*|newTag: ${{ github.sha }}|" \
+            platform-config/overlays/dev/helloworld/kustomization.yaml
+      - name: Commit and push tag bump
+        run: |
+          cd platform-config
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add overlays/dev/helloworld/kustomization.yaml
+          git commit -m "bump helloworld to ${{ github.sha }}"
+          git push

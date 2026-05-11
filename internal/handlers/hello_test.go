@@ -72,3 +72,26 @@ func TestHelloHandler_ContentType(t *testing.T) {
 		t.Errorf("expected Content-Type application/json, got %q", ct)
 	}
 }
+
+func TestHandleFail(t *testing.T) {
+	h := newTestHelloHandler(t)
+	req := httptest.NewRequest(http.MethodGet, "/fail", nil)
+	rec := httptest.NewRecorder()
+
+	h.HandleFail(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	ct := rec.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode body: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected error key in response body")
+	}
+}
