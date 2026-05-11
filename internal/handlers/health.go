@@ -1,3 +1,4 @@
+// Package handlers implements the HTTP handlers for the helloworld service.
 package handlers
 
 import (
