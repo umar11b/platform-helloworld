@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/platform
+  IMAGE: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/platform/helloworld
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go vet ./...
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest && staticcheck ./...
+      - run: go test ./... -race -coverprofile=coverage.out
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+      - run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build image
+        run: docker build -t $IMAGE:${{ github.sha }} .
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+      - uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}:${{ github.sha }}
+      - uses: sigstore/cosign-installer@v3
+      - run: docker push $IMAGE:${{ github.sha }}
+      - run: cosign sign --yes $IMAGE:${{ github.sha }}
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.PLATFORM_CONFIG_PAT }}
+          repository: umar11b/platform-config
+          branch: bump/helloworld-${{ github.sha }}
+          title: "bump helloworld to ${{ github.sha }}"
+          body: "Automated image bump from CI"
+          commit-message: "bump helloworld to ${{ github.sha }}"
+          body-path: ""
+          add-paths: overlays/dev/helloworld/kustomization.yaml
